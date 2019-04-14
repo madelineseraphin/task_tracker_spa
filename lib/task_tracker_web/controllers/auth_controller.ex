@@ -6,7 +6,7 @@ defmodule TaskTrackerWeb.AuthController do
 
   action_fallback TaskTrackerWeb.FallbackController
 
-  def authenticate(conn, %{"email" => email, "password" => password}) do
+  def authenticate(conn, %{"email" => email, "password_hash" => password}) do
     with {:ok, %User{} = user} <- Users.authenticate_user(email, password) do
       resp = %{
         data: %{

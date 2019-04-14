@@ -3,25 +3,44 @@ import ReactDOM from 'react-dom';
 import _ from 'lodash';
 import $ from 'jquery';
 import { Link, BrowserRouter as Router, Route } from 'react-router-dom';
+// import { Provider } from 'react-redux';
+// import api from './api';
 
 export default function root_init(node) {
-    let tasks = window.tasks;
-    ReactDOM.render(<Root tasks={tasks} />, node);
+    ReactDOM.render(<Root />, node);
 }
 
 class Root extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
-            login_form: {email: "", password: ""},
-            registration_form: {email: "", password: ""},
+            login_form: {
+                email: "",
+                password_hash: ""
+            },
+            registration_form: {
+                email: "",
+                password_hash: ""
+            },
+            user_form: {
+                email: "",
+                admin: false,
+            },
+            task_form: {
+                title: "",
+                description: "",
+                user: null,
+                hours: 0.0,
+                completed: false
+            },
             session: null,
-            currentEmail: null,
-            users: [],
-            tasks: props.tasks,
+            user: {
+                email: "",
+                admin: false
+            },
+            users: this.fetch_users(),
+            tasks: this.fetch_tasks()
         };
-
-        //this.fetch_products();
     }
 
     fetch_tasks() {
@@ -50,42 +69,18 @@ class Root extends React.Component {
         });
     }
 
-    login() {
-        $.ajax("/api/v1/auth", {
-            method: "post",
+    fetch_current_user(id) {
+        $.ajax("/api/v1/users/" + id, {
+            method: "get",
             dataType: "json",
             contentType: "application/json; charset=UTF-8",
-            data: JSON.stringify(this.state.login_form),
-            success: (resp) => {
-                let currentEmail = this.state.login_form.email;
-                let state1 = _.assign({}, this.state, { session: resp.data, currentEmail: currentEmail, loginError: null });
-                console.log(resp);
-                return this.setState(state1);
-            },
-            error: (error) => {
-                console.log(error);
-                if (error.responseText.includes("email")) {
-                    return this.setState({loginError: "Incorrect email."});
-                }
-                else if (error.responseText.includes("auth")) {
-                    return this.setState({loginError: "Incorrect password."});
-                }
-                else {
-                    return this.setState({loginError: "Login error. Please try again."});
-                }
+            data: "",
+            success: resp => {
+              console.log(resp.data);
+              let state1 = _.assign({}, this.state, { user: resp.data });
+              this.setState(state1);
             }
         });
-    }
-
-    logout() {
-        return this.setState({
-            login_form: {email: "", password: ""},
-            registration_form: {email: "", password: ""},
-            session: null,
-            currentEmail: null,
-            users: [],
-            tasks: []
-        })
     }
 
     update_login_form(data) {
@@ -94,32 +89,33 @@ class Root extends React.Component {
         this.setState(state1);
     }
 
-    register() {
-        let userData = this.state.registration_form,
-            user = JSON.stringify({user: {email: userData.email, password: userData.password}});
-        $.ajax("/api/v1/users", {
+    login() {
+        $.ajax("/api/v1/auth", {
             method: "post",
             dataType: "json",
             contentType: "application/json; charset=UTF-8",
-            data: user,
+            data: JSON.stringify(this.state.login_form),
             success: (resp) => {
+                let state1 = _.assign({}, this.state, { session: resp.data, loginError: null });
                 console.log(resp);
-                let currentEmail = this.state.registration_form.email;
-                let state1 = _.assign({}, this.state, { session: resp.data, currentEmail: currentEmail, registrationError: null });
-                return this.setState(state1);
+                return this.setState(state1, () => this.fetch_current_user(resp.data.user_id));
             },
             error: (error) => {
-                if (error.responseText.includes("email")) {
-                    return this.setState({registrationError: "Please use a valid email that does not already have an account."});
-                }
-                else if (error.responseText.includes("password")) {
-                    return this.setState({registrationError: "Your password must be at least 7 characters."});
-                }
-                else {
-                    return this.setState({registrationError: "Registration error. Please try again."});
-                }
+                console.log(error);
+                return this.setState({loginError: "Login error. Please try again."});
             }
-        }); 
+        });
+    }
+
+    logout() {
+        return this.setState({
+            login_form: { email: "", password_hash: "" },
+            registration_form: { email: "", password_hash: "" },
+            user_form: { email: "", admin: false },
+            task_form: { title: "", description: "", user: null, hours: 0.0, completed: false },
+            session: null,
+            user: { email: "", admin: false }
+        })
     }
 
     update_registration_form(data) {
@@ -128,19 +124,151 @@ class Root extends React.Component {
         this.setState(state1);
     }
 
+    register() {
+        $.ajax("/api/v1/users", {
+            method: "post",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: JSON.stringify({ user: this.state.registration_form }),
+            success: (resp) => {
+                console.log(resp);
+                let state1 = _.assign({}, this.state, { session: resp.data, registrationError: null });
+                return this.setState(state1, () => this.fetch_current_user(resp.data.id));
+            },
+            error: (error) => {
+                console.log(error);
+                return this.setState({registrationError: "Registration error. Please try again."});
+            }
+        }); 
+    }
+
+    update_task_form(data) {
+        let form1 = _.assign({}, this.state.task_form, data);
+        let state1 = _.assign({}, this.state, { task_form: form1 });
+        this.setState(state1);
+    }
+
+    create_task() {
+        let task = this.state.task_form;
+        $.ajax("/api/v1/tasks", {
+            method: "post",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: JSON.stringify({ task: task }),
+            success: resp => {
+                console.log(resp.data);
+                this.fetch_tasks();
+            }
+        });
+    }
+
+    update_task() {
+        let task = this.state.task_form;
+        $.ajax("/api/v1/tasks/" + task.id, {
+            method: "put",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: JSON.stringify({ id: task.id, task: task }),
+            success: (resp) => {
+                console.log(resp.data);
+                this.fetch_tasks();
+            }
+        });
+    }
+
+    get_task(id) {
+        $.ajax("/api/v1/tasks/" + id, {
+            method: "get",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: "",
+            success: resp => {
+              console.log(resp.data);
+              let state1 = _.assign({}, this.state, { task_form: resp.data });
+              this.setState(state1);
+            }
+        });
+    }
+
+    delete_task(id) {
+        $.ajax("/api/v1/tasks/" + id, {
+            method: "delete",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: "",
+            success: resp => {
+              console.log(resp.data);
+              this.fetch_tasks();
+            }
+        });
+    }
+
+    update_user() {
+        let user = this.state.user_form;
+        $.ajax("/api/v1/tasks/" + user.id, {
+            method: "put",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: JSON.stringify({ id: user.id, user: user }),
+            success: (resp) => {
+                console.log(resp.data);
+                this.fetch_users();
+            }
+        });
+    }
+
+    get_user(id) {
+        $.ajax("/api/v1/users/" + id, {
+            method: "get",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: "",
+            success: resp => {
+              console.log(resp.data);
+              let state1 = _.assign({}, this.state, { user_form: resp.data });
+              this.setState(state1);
+            }
+        });
+    }
+
+    delete_user(id) {
+        $.ajax("/api/v1/users/" + id, {
+            method: "delete",
+            dataType: "json",
+            contentType: "application/json; charset=UTF-8",
+            data: "",
+            success: resp => {
+              console.log(resp.data);
+              this.fetch_users();
+            }
+        });
+    }
+
     render() {
         return (<div>
             <Router>
                 <div>
                     <Header root={this} />
                     <Route path="/" exact={true} render={() =>
-                        <HomePage root={this} currentEmail={this.state.currentEmail} />
+                        <HomePage root={this} />
                     } />
                     <Route path="/tasks" exact={true} render={() =>
                         <TaskList tasks={this.state.tasks} />
                     } />
+                    <Route path="/task/:id" exact={true} render={() =>
+                        <TaskView task={this.get_task(id)} />
+                    } />
+                    <Route path="/task/edit/:id" exact={true} render={() =>
+                        <TaskEdit task={this.get_task(id)} />
+                    } />
                     <Route path="/users" exact={true} render={() =>
                         <UserList users={this.state.users} />
+                    } />
+                    <Route path="/user/:id" exact={true} render={() =>
+                        <UserView task={this.get_user(id)} />
+                    } />
+                    <Route path="/user/edit/:id" exact={true} render={() =>
+                        <UserEdit task={this.get_user(id)} />
                     } />
                 </div>
             </Router>
@@ -156,13 +284,13 @@ function Header(props) {
             <input type="email" placeholder="Email" className="form-control"
                 onChange={(ev) => root.update_login_form({ email: ev.target.value })} />
             <input type="password" placeholder="Password" className="form-control"
-                onChange={(ev) => root.update_login_form({ password: ev.target.value })} />
+                onChange={(ev) => root.update_login_form({ password_hash: ev.target.value })} />
             <button className="btn btn-secondary" onClick={() => root.login()}>Login</button>
         </div>;
     }
     else {
         session_info = <div className="my-2">
-            <p>{root.state.currentEmail} | 
+            <p>{root.state.user.email} | 
                 <a onClick={() => root.logout()}> Logout</a>
             </p>
         </div>
@@ -180,7 +308,7 @@ function Header(props) {
 
 function HomePage(props) {
     let root = props.root;
-    let currentEmail = props.currentEmail;
+    let currentEmail = root.state.user.email;
     if (currentEmail) {
         return <div><h2>Welcome {currentEmail}</h2></div>
     } else {
@@ -190,7 +318,7 @@ function HomePage(props) {
             <input type="email" placeholder="Email" className="form-control"
                 onChange={(ev) => root.update_registration_form({ email: ev.target.value })} />
             <input type="password" placeholder="Password" className="form-control"
-                onChange={(ev) => root.update_registration_form({ password: ev.target.value })} />
+                onChange={(ev) => root.update_registration_form({ password_hash: ev.target.value })} />
             <button className="btn btn-secondary" onClick={() => root.register()}>Register</button>
             <p className="error">{root.state.registrationError}</p>
         </div>
@@ -206,12 +334,94 @@ function TaskList(props) {
 
 function Task(props) {
     let { task } = props;
-    return (<div className="card col-4">
-        <div className="card-body">
-            <h2 className="card-title">{task.title}</h2>
-            <p className="card-text">{task.description}</p>
+    let status = 'Not Started';
+    if (task.complete) {
+        status = "Completed!";
+    }
+    if (!task.complete && task.hours > 0.0) {
+        status = "In progress";
+    }
+    return (
+        <div className="card col-12">
+      <div className="card-body">
+        <div className="row">
+          <div className="col-8">
+            <Link to={"/task/" + task.id}>{task.title}</Link>
+          </div>
+          <div className="col-2">
+            {status}
+          </div>
+          <div className="col-2">
+            <Link className="btn btn-info" to={"/task/edit/" + task.id}>Edit</Link>
+            <Link className="btn btn-danger" to={"/task/delete/" + task.id}>Delete</Link>
+          </div>
         </div>
-    </div>);
+      </div>
+    </div>
+    )
+}
+
+function TaskView(props) {
+    let { task } = props;
+    let assignee = task.user_id ? task.user_id : 'Unassigned'
+    return (
+    <ul>
+        <li>
+            <strong>Title:</strong> {task.title}
+        </li>
+        <li>
+            <strong>Description:</strong> {task.description}
+        </li>
+
+        <li>
+            <strong>Assignee:</strong> {assignee}
+        </li>
+
+        <li>
+            <strong>Hours:</strong> {task.hours}
+        </li>
+
+        <li>
+            <strong>Complete:</strong> {task.complete}
+        </li>
+
+    </ul>
+    )
+}
+
+function TaskEdit(props) {
+    let { task } = props;
+    let assignee = task.user_id ? task.user_id : 'Unassigned'
+    return (<div>
+        <div className="form-group">
+            <label>Title</label>
+            <input type="text" className="form-control" 
+                onChange={(ev) => root.update_task_edit_form({ title: ev.target.value })}/>
+        </div>
+
+        <div className="form-group">
+            <label>Description</label>
+            <textarea className="form-control" 
+                onChange={(ev) => root.update_task_edit_form({ description: ev.target.value })}/>
+        </div>
+
+        <div className="form-group">
+            <label>Assignee</label>
+            <select>
+
+            </select>
+        </div>
+
+        <div className="form-group">
+            <label>Time worked on</label>
+            <input type="number" step="0.25" className="formControl" />
+        </div>
+
+        <div className="form-group">
+            <input type="check" className="formControl" />
+        </div>
+
+    </div>)
 }
 
 function UserList(props) {
