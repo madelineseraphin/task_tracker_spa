@@ -15,6 +15,7 @@ defmodule TaskTrackerWeb.TaskView do
       complete: task.complete,
       description: task.description,
       hours: task.hours,
-      title: task.title}
+      title: task.title,
+      user_id: task.user_id}
   end
 end
